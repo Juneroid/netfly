@@ -1,0 +1,16 @@
+# 本地工具链（Go SDK、frp 源码、npm 缓存等）
+.tools/
+
+# 构建产物
+server-app/build/bin/
+client-app/build/bin/
+*.exe
+
+# 前端
+node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
