@@ -18,7 +18,11 @@ import (
 	"netfly.dev/common/localfwd"
 	"netfly.dev/common/logbridge"
 	"netfly.dev/common/model"
+	"netfly.dev/common/winui"
 )
+
+// windowTitle 主窗口标题，用于 Win32 查找句柄（须与 main.go 一致）。
+const windowTitle = "NetFly 客户端"
 
 // NodeNetStat 单个节点的网络统计（流量与实时速率）。
 type NodeNetStat struct {
@@ -135,9 +139,16 @@ func (a *App) shutdown(_ context.Context) {
 	a.bridge.Close()
 }
 
-// showWindow 显示主窗口（托盘菜单触发）。
+// showWindow 显示并前置主窗口（托盘菜单/图标点击触发）。
+// 该方法在独立 goroutine 中被调用，不阻塞托盘消息循环。
+// 先用 Win32 强制恢复+前置（解决长期隐藏后 SW_SHOW 不生效），
+// 再用 Wails 运行时兜底。
 func (a *App) showWindow() {
+	if hwnd := winui.FindWindowByTitle(windowTitle); hwnd != 0 {
+		winui.WakeWindow(hwnd)
+	}
 	if a.ctx != nil {
+		runtime.WindowUnminimise(a.ctx)
 		runtime.WindowShow(a.ctx)
 	}
 }

@@ -1,6 +1,10 @@
 // Package tray 提供系统托盘（任务栏右下角）能力。
-// 基于 energye/systray，在独立 goroutine 中运行消息循环，
-// 与 Wails 主窗口事件循环互不干扰。
+// 基于 energye/systray 运行托盘消息循环。
+//
+// 关键设计：所有用户回调（点击图标、点击菜单）一律通过 goroutine
+// 异步派发，绝不阻塞托盘自身的 Windows 消息循环。否则长时间运行后
+// 跨线程的窗口操作可能卡住回调，导致"进程还在、图标还在，但点击
+// 托盘没有任何反应"。
 package tray
 
 import (
@@ -21,6 +25,15 @@ type Config struct {
 	OnQuit  func() // 退出程序
 }
 
+// dispatch 在独立 goroutine 中执行回调，
+// 保证 systray 的消息分发线程立即返回、永不阻塞。
+func dispatch(fn func()) {
+	if fn == nil {
+		return
+	}
+	go fn()
+}
+
 // Start 在后台 goroutine 中启动系统托盘。
 // 窗口关闭按钮将被应用层拦截为隐藏，程序通过托盘菜单退出。
 func Start(cfg Config) error {
@@ -32,23 +45,26 @@ func Start(cfg Config) error {
 		systray.SetIcon(cfg.Icon)
 		systray.SetTooltip(cfg.Tooltip)
 
-		// 左键单击托盘图标 -> 显示主界面
+		// 左键单击托盘图标 -> 显示主界面（异步，避免阻塞消息循环）
 		systray.SetOnClick(func(_ systray.IMenu) {
-			if cfg.OnShow != nil {
-				cfg.OnShow()
-			}
+			dispatch(cfg.OnShow)
+		})
+		// 双击托盘图标同样显示主界面
+		systray.SetOnDClick(func(_ systray.IMenu) {
+			dispatch(cfg.OnShow)
 		})
 
-		systray.AddMenuItem("显示主界面", "显示应用程序主窗口")
+		showItem := systray.AddMenuItem("显示主界面", "显示应用程序主窗口")
+		showItem.Click(func() {
+			dispatch(cfg.OnShow)
+		})
 		systray.AddSeparator()
 
 		var quitOnce sync.Once
 		quitItem := systray.AddMenuItem("退出", "退出程序")
 		quitItem.Click(func() {
 			quitOnce.Do(func() {
-				if cfg.OnQuit != nil {
-					cfg.OnQuit()
-				}
+				dispatch(cfg.OnQuit)
 				systray.Quit()
 			})
 		})
